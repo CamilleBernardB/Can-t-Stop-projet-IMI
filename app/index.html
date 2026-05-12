@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Can't Stop - Simulateur</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Simulateur solitaire</p>
+        <h1>Can't Stop</h1>
+      </div>
+      <nav class="main-nav" aria-label="Rubriques">
+        <button class="nav-button is-active" type="button" data-view="home">Accueil</button>
+        <button class="nav-button" type="button" data-view="solo">Jeu solo</button>
+        <button class="nav-button" type="button" data-view="duel">Duel heuristique</button>
+        <button class="nav-button" type="button" data-view="two-player">2 joueurs</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="view is-active" id="home-view" aria-labelledby="home-title">
+        <div class="home-layout">
+          <div class="home-copy">
+            <p class="eyebrow">Interface jouable</p>
+            <h2 id="home-title">Choisissez une rubrique pour lancer une partie.</h2>
+            <p>
+              Le plateau, les marqueurs temporaires, les positions protégées et les jets de dés
+              suivent les mêmes structures que les notebooks de simulation.
+            </p>
+          </div>
+            <div class="demo-stage" aria-label="Aperçu animé d'une partie">
+            <div class="demo-topline">
+              <span id="demo-caption">Heuristique H2</span>
+              <div class="dice-row mini" id="demo-dice"></div>
+            </div>
+            <div class="board compact" id="demo-board"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="solo-view" aria-labelledby="solo-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Mode 1 joueur</p>
+            <h2 id="solo-title">Compléter trois colonnes en un minimum de tours</h2>
+          </div>
+          <button class="secondary-button" type="button" id="solo-new-game">Nouvelle partie</button>
+        </div>
+        <div id="solo-root"></div>
+      </section>
+
+      <section class="view" id="duel-view" aria-labelledby="duel-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Mode comparatif</p>
+            <h2 id="duel-title">Joueur contre heuristique</h2>
+          </div>
+          <div class="duel-controls">
+            <label for="heuristic-select">Heuristique</label>
+            <select id="heuristic-select"></select>
+            <button class="secondary-button" type="button" id="duel-new-game">Nouvelle partie</button>
+          </div>
+        </div>
+        <div id="duel-root"></div>
+      </section>
+
+      <section class="view" id="two-player-view" aria-labelledby="two-player-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Mode versus</p>
+            <h2 id="two-player-title">Deux joueurs</h2>
+          </div>
+          <button class="secondary-button" type="button" id="two-player-new-game">Nouvelle partie</button>
+        </div>
+        <div id="two-player-root"></div>
+      </section>
+    </main>
+  </body>
+</html>
