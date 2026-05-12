@@ -121,7 +121,28 @@
 
   function getActionChoices(action, progress, tempProgress, blockedColumns = []) {
     const fullAction = simulateActionSequence(action, progress, tempProgress, blockedColumns);
-    return fullAction ? [fullAction] : [];
+
+    if (fullAction) {
+      return [fullAction];
+    }
+
+    const choices = [];
+    const seen = new Set();
+
+    action.forEach((column) => {
+      const singleAction = simulateActionSequence([column], progress, tempProgress, blockedColumns);
+      if (!singleAction) {
+        return;
+      }
+
+      const key = actionKey(singleAction);
+      if (!seen.has(key)) {
+        seen.add(key);
+        choices.push(singleAction);
+      }
+    });
+
+    return choices;
   }
 
   function actionIsLegal(action, progress, tempProgress, blockedColumns = []) {
