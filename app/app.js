@@ -121,28 +121,7 @@
 
   function getActionChoices(action, progress, tempProgress, blockedColumns = []) {
     const fullAction = simulateActionSequence(action, progress, tempProgress, blockedColumns);
-
-    if (fullAction) {
-      return [fullAction];
-    }
-
-    const choices = [];
-    const seen = new Set();
-
-    action.forEach((column) => {
-      const singleAction = simulateActionSequence([column], progress, tempProgress, blockedColumns);
-      if (!singleAction) {
-        return;
-      }
-
-      const key = actionKey(singleAction);
-      if (!seen.has(key)) {
-        seen.add(key);
-        choices.push(singleAction);
-      }
-    });
-
-    return choices;
+    return fullAction ? [fullAction] : [];
   }
 
   function actionIsLegal(action, progress, tempProgress, blockedColumns = []) {
@@ -667,6 +646,7 @@
       this.selectedIndices = [];
       this.selectedChoiceIndex = null;
       this.legalActions = [];
+      this.bustedTempProgress = {};
       this.phase = "idle";
       this.finished = false;
       this.message = this.options.mode === "duel"
@@ -761,6 +741,7 @@
         return;
       }
 
+      this.bustedTempProgress = {};
       this.selectedIndices = [];
       this.selectedChoiceIndex = null;
       this.currentRoll = this.getRoll();
@@ -769,6 +750,7 @@
 
       if (this.legalActions.length === 0) {
         const bustedTurn = this.turnCount + 1;
+        this.bustedTempProgress = cloneMap(this.tempProgress);
         this.tempProgress = {};
         this.turnCount += 1;
         this.rollCountInTurn = 0;
@@ -828,6 +810,13 @@
       return null;
     }
 
+    legalActionHint() {
+      if (!this.legalActions.length) {
+        return "";
+      }
+      return ` Actions possibles: ${this.legalActions.map(describeAction).join(" / ")}.`;
+    }
+
     selectActionChoice(index) {
       this.selectedChoiceIndex = index;
       this.render();
@@ -855,7 +844,7 @@
     }
 
     stopTurn() {
-      if (this.finished || Object.keys(this.tempProgress).length === 0) {
+      if (this.finished || this.phase !== "decision" || Object.keys(this.tempProgress).length === 0) {
         return;
       }
 
@@ -903,7 +892,7 @@
       const action = this.getSelectedAction();
 
       if (!action) {
-        return this.message;
+        return this.message + this.legalActionHint();
       }
 
       const choices = getActionChoices(action, this.progress, this.tempProgress);
@@ -924,7 +913,7 @@
         return `${selectedValues} puis ${remainingValues}: choisissez le nombre à utiliser.`;
       }
 
-      return `${selectedValues} puis ${remainingValues}: choix impossible avec les colonnes ouvertes.`;
+      return `${selectedValues} puis ${remainingValues}: choix impossible avec les colonnes ouvertes. Choisissez une autre paire.${this.legalActionHint()}`;
     }
 
     renderChoiceOptions() {
@@ -978,7 +967,9 @@
 
     render() {
       assertTempProgressInvariant(this.tempProgress);
-      renderBoard(this.refs.board, this.progress, this.tempProgress);
+      const displayTempProgress =
+        Object.keys(this.bustedTempProgress).length > 0 ? this.bustedTempProgress : this.tempProgress;
+      renderBoard(this.refs.board, this.progress, displayTempProgress);
       renderDice(
         this.refs.dice,
         this.currentRoll,
@@ -989,7 +980,10 @@
 
       this.refs.stats.turns.textContent = String(this.turnCount);
       this.refs.stats.won.textContent = `${countWonColumns(this.progress)} / 3`;
-      this.refs.stats.open.textContent = formatClimbers(this.tempProgress);
+      this.refs.stats.open.textContent =
+        Object.keys(this.bustedTempProgress).length > 0
+          ? `${formatClimbers(this.bustedTempProgress)} (bust)`
+          : formatClimbers(this.tempProgress);
       this.refs.stats.rolls.textContent = String(this.rollCountInTurn);
 
       this.refs.message.textContent = this.phase === "select" ? this.renderSelectionMessage() : this.message;
@@ -1010,7 +1004,8 @@
       this.refs.rollButton.textContent = this.rollCountInTurn === 0 ? "Lancer" : "Continuer";
       this.refs.rollButton.disabled = this.finished || this.phase === "select";
       this.refs.validateButton.disabled = !canValidate;
-      this.refs.stopButton.disabled = this.finished || Object.keys(this.tempProgress).length === 0;
+      this.refs.stopButton.disabled =
+        this.finished || this.phase !== "decision" || Object.keys(this.tempProgress).length === 0;
       this.renderChoiceOptions();
 
       if (this.result) {
@@ -1050,6 +1045,8 @@
       this.currentRoll = null;
       this.selectedIndices = [];
       this.selectedChoiceIndex = null;
+      this.bustedTempProgress = {};
+      this.bustedPlayerId = null;
       this.phase = "idle";
       this.finished = false;
       this.result = null;
@@ -1157,11 +1154,26 @@
       this.phase = "idle";
     }
 
+    legalActionHint() {
+      const legalActions = legalActionsForRoll(
+        this.currentRoll,
+        this.currentPlayer.progress,
+        this.tempProgress,
+        this.blockedColumns,
+      );
+      if (!legalActions.length) {
+        return "";
+      }
+      return ` Actions possibles: ${legalActions.map(describeAction).join(" / ")}.`;
+    }
+
     roll() {
       if (this.finished || this.phase === "select") {
         return;
       }
 
+      this.bustedTempProgress = {};
+      this.bustedPlayerId = null;
       this.selectedIndices = [];
       this.selectedChoiceIndex = null;
       this.currentRoll = randomRoll();
@@ -1175,6 +1187,8 @@
 
       if (legalActions.length === 0) {
         const playerName = this.currentPlayer.name;
+        this.bustedTempProgress = cloneMap(this.tempProgress);
+        this.bustedPlayerId = this.currentPlayer.id;
         this.currentPlayer.turns += 1;
         this.totalTurns += 1;
         this.tempProgress = {};
@@ -1267,7 +1281,7 @@
     }
 
     stopTurn() {
-      if (this.finished || Object.keys(this.tempProgress).length === 0) {
+      if (this.finished || this.phase !== "decision" || Object.keys(this.tempProgress).length === 0) {
         return;
       }
 
@@ -1315,7 +1329,7 @@
       const action = this.getSelectedAction();
 
       if (!action) {
-        return this.message;
+        return this.message + this.legalActionHint();
       }
 
       const choices = this.getSelectedActionChoices();
@@ -1336,7 +1350,7 @@
         return `${selectedValues} puis ${remainingValues}: choisissez le nombre à utiliser.`;
       }
 
-      return `${selectedValues} puis ${remainingValues}: choix impossible.`;
+      return `${selectedValues} puis ${remainingValues}: choix impossible. Choisissez une autre paire.${this.legalActionHint()}`;
     }
 
     renderChoiceOptions() {
@@ -1372,11 +1386,14 @@
 
     render() {
       assertTempProgressInvariant(this.tempProgress);
+      const displayTempProgress =
+        Object.keys(this.bustedTempProgress).length > 0 ? this.bustedTempProgress : this.tempProgress;
+      const displayPlayerId = this.bustedPlayerId || this.currentPlayer.id;
       renderBoardTwoPlayer(
         this.refs.board,
         this.players,
-        this.currentPlayer.id,
-        this.tempProgress,
+        displayPlayerId,
+        displayTempProgress,
         this.columnOwners,
       );
       renderDice(
@@ -1390,7 +1407,10 @@
       const p1Captured = countCapturedByPlayer(this.columnOwners, 1);
       const p2Captured = countCapturedByPlayer(this.columnOwners, 2);
       this.refs.stats.activePlayer.textContent = this.currentPlayer.name;
-      this.refs.stats.open.textContent = formatClimbers(this.tempProgress);
+      this.refs.stats.open.textContent =
+        Object.keys(this.bustedTempProgress).length > 0
+          ? `${formatClimbers(this.bustedTempProgress)} (bust)`
+          : formatClimbers(this.tempProgress);
       this.refs.stats.claimed.textContent = `J1 ${p1Captured} - J2 ${p2Captured}`;
       this.refs.stats.rolls.textContent = String(this.rollCountInTurn);
       this.refs.turnCard.textContent = this.finished ? "Partie terminée" : `Tour du ${this.currentPlayer.name}`;
@@ -1413,7 +1433,8 @@
       this.refs.rollButton.textContent = this.rollCountInTurn === 0 ? "Lancer" : "Continuer";
       this.refs.rollButton.disabled = this.finished || this.phase === "select";
       this.refs.validateButton.disabled = !canValidate;
-      this.refs.stopButton.disabled = this.finished || Object.keys(this.tempProgress).length === 0;
+      this.refs.stopButton.disabled =
+        this.finished || this.phase !== "decision" || Object.keys(this.tempProgress).length === 0;
       this.renderChoiceOptions();
       this.renderCaptures();
 

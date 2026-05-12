@@ -34,7 +34,7 @@ function progressWith(overrides = {}) {
   const temp = { 5: 1, 8: 2, 9: 1 };
   const legal = rules.legalActionsForRoll([2, 3, 5, 6], progress, temp);
 
-  assert.deepEqual(sortedActions(legal), ["5", "8-8", "9"]);
+  assert.deepEqual(sortedActions(legal), ["8-8"]);
 }
 
 {
@@ -51,7 +51,7 @@ function progressWith(overrides = {}) {
   const temp = { 6: 2, 8: 1, 10: 1 };
   const legal = rules.legalActionsForRoll([2, 3, 4, 6], progress, temp, [5, 7]);
 
-  assert.deepEqual(sortedActions(legal), ["10", "6", "8"]);
+  assert.deepEqual(sortedActions(legal), []);
 }
 
 {
@@ -59,7 +59,7 @@ function progressWith(overrides = {}) {
   const temp = { 5: 1, 8: 2 };
   const choices = rules.getActionChoices([9, 10], progress, temp);
 
-  assert.deepEqual(sortedActions(choices), ["10", "9"]);
+  assert.deepEqual(sortedActions(choices), []);
 }
 
 {
@@ -67,7 +67,7 @@ function progressWith(overrides = {}) {
   const temp = { 6: 1, 7: 1, 8: 1 };
   const legal = rules.legalActionsForRoll([2, 3, 5, 6], progress, temp);
 
-  assert.deepEqual(sortedActions(legal), ["7", "8-8"]);
+  assert.deepEqual(sortedActions(legal), ["8-8"]);
 }
 
 {
@@ -106,6 +106,7 @@ function progressWith(overrides = {}) {
 
   for (const roll of allRolls) {
     for (const action of rules.legalActionsForRoll(roll, progress, temp)) {
+      assert.equal(action.length, 2, `single-column action allowed for ${roll}`);
       const next = rules.applyAction(action, progress, temp);
       assert.equal(rules.countOpenColumns(next) <= 3, true, `opened too many columns for ${roll}`);
       for (const column of rules.listOpenColumns(next)) {
