@@ -18,6 +18,7 @@
         <button class="nav-button" type="button" data-view="solo">Jeu solo</button>
         <button class="nav-button" type="button" data-view="duel">Duel heuristique</button>
         <button class="nav-button" type="button" data-view="two-player">2 joueurs</button>
+        <button class="nav-button" type="button" data-view="auto-duel">Heuristique vs heuristique</button>
       </nav>
     </header>
 
@@ -77,6 +78,29 @@
           <button class="secondary-button" type="button" id="two-player-new-game">Nouvelle partie</button>
         </div>
         <div id="two-player-root"></div>
+      </section>
+
+      <section class="view" id="auto-duel-view" aria-labelledby="auto-duel-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Mode automatique</p>
+            <h2 id="auto-duel-title">Heuristique contre heuristique</h2>
+          </div>
+
+          <div class="duel-controls">
+            <label for="heuristic-a-select">Heuristique A</label>
+            <select id="heuristic-a-select"></select>
+
+            <label for="heuristic-b-select">Heuristique B</label>
+            <select id="heuristic-b-select"></select>
+
+            <button class="secondary-button" type="button" id="auto-duel-new-game">
+              Nouvelle partie
+            </button>
+          </div>
+        </div>
+
+        <div id="auto-duel-root"></div>
       </section>
     </main>
   </body>
