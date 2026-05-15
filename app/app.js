@@ -177,32 +177,23 @@
   }
 
   function applyAction(action, progress, tempProgress, blockedColumns = []) {
-    const nextTemp = assertTempProgressInvariant(cloneMap(tempProgress));
-    const openColumns = new Set(Object.keys(nextTemp).map(Number));
-    const blocked = toBlockedSet(blockedColumns);
+    const choices = getActionChoices(action, progress, tempProgress, blockedColumns);
 
-    for (const column of action) {
-      if (blocked.has(column)) {
-        continue;
-      }
-
-      const currentPosition = progress[column] + (nextTemp[column] || 0);
-
-      if (currentPosition < NS[column]) {
-        if (!openColumns.has(column)) {
-          if (openColumns.size >= 3) {
-            continue;
-          }
-          openColumns.add(column);
-        }
-
-        nextTemp[column] = (nextTemp[column] || 0) + 1;
-
-        if (progress[column] + nextTemp[column] > NS[column]) {
-          nextTemp[column] = NS[column] - progress[column];
-        }
-      }
+    if (choices.length === 0) {
+      return assertTempProgressInvariant(cloneMap(tempProgress));
     }
+
+    const effectiveAction = choices.find((choice) => actionKey(choice) === actionKey(action)) || choices[0];
+
+    const nextTemp = assertTempProgressInvariant(cloneMap(tempProgress));
+
+    effectiveAction.forEach((column) => {
+      nextTemp[column] = (nextTemp[column] || 0) + 1;
+
+      if (progress[column] + nextTemp[column] > NS[column]) {
+        nextTemp[column] = NS[column] - progress[column];
+      }
+    });
 
     return assertTempProgressInvariant(nextTemp);
   }
@@ -1123,6 +1114,14 @@ class TwoPlayerController {
         this.tempProgress,
         this.blockedColumns,
       );
+
+      console.log("AUTO TURN DEBUG", {
+        player: player.name,
+        roll: this.currentRoll,
+        blockedColumns: this.blockedColumns,
+        tempProgress: this.tempProgress,
+        legalActions,
+      });
 
       if (legalActions.length === 0) {
         this.bustedTempProgress = cloneMap(this.tempProgress);
