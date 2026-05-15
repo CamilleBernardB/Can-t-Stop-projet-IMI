@@ -29,6 +29,7 @@
     duelGame: null,
     twoPlayerGame: null,
     homeTimer: null,
+    autoDuelGame: null,
   };
 
   function makeEmptyProgress() {
@@ -1623,6 +1624,48 @@ class TwoPlayerController {
     state.twoPlayerGame = new TwoPlayerController(root);
   }
 
+  function populateAutoDuelSelects() {
+    const selectA = document.querySelector("#heuristic-a-select");
+    const selectB = document.querySelector("#heuristic-b-select");
+
+    if (!selectA || !selectB) {
+      return;
+    }
+
+    const options = Object.entries(HEURISTICS)
+      .map(([id, heuristic]) => `<option value="${id}">${heuristic.name}</option>`)
+      .join("");
+
+    selectA.innerHTML = options;
+    selectB.innerHTML = options;
+
+    selectA.value = "h2";
+    selectB.value = "h3";
+  }
+
+  function startAutoDuelGame() {
+    const heuristicAId = document.querySelector("#heuristic-a-select").value;
+    const heuristicBId = document.querySelector("#heuristic-b-select").value;
+    const root = document.querySelector("#auto-duel-root");
+
+    state.autoDuelGame = new TwoPlayerController(root, {
+      players: [
+        {
+          id: 1,
+          name: HEURISTICS[heuristicAId].name,
+          type: "heuristic",
+          heuristicId: heuristicAId,
+        },
+        {
+          id: 2,
+          name: HEURISTICS[heuristicBId].name,
+          type: "heuristic",
+          heuristicId: heuristicBId,
+        },
+      ],
+    });
+  }
+
   function setupNavigation() {
     const buttons = document.querySelectorAll(".nav-button");
     const views = document.querySelectorAll(".view");
@@ -1694,15 +1737,22 @@ class TwoPlayerController {
   function boot() {
     setupNavigation();
     populateHeuristicSelect();
+    populateAutoDuelSelects();
+    
     startSoloGame();
     startDuelGame();
     startTwoPlayerGame();
+    startAutoDuelGame();
     startHomeDemo();
+
 
     document.querySelector("#solo-new-game").addEventListener("click", startSoloGame);
     document.querySelector("#duel-new-game").addEventListener("click", startDuelGame);
     document.querySelector("#two-player-new-game").addEventListener("click", startTwoPlayerGame);
     document.querySelector("#heuristic-select").addEventListener("change", startDuelGame);
+    document.querySelector("#auto-duel-new-game").addEventListener("click", startAutoDuelGame);
+    document.querySelector("#heuristic-a-select").addEventListener("change", startAutoDuelGame);
+    document.querySelector("#heuristic-b-select").addEventListener("change", startAutoDuelGame);
   }
 
   globalThis.CantStopRules = {
