@@ -1045,19 +1045,29 @@
     }
   }
 
-  class TwoPlayerController {
-    constructor(root) {
+class TwoPlayerController {
+    constructor(root, options = {}) {
       this.root = root;
+      this.options = {
+        players: [
+          { id: 1, name: "Joueur 1", type: "human" },
+          { id: 2, name: "Joueur 2", type: "human" },
+        ],
+        ...options,
+      };
       this.reset();
       this.mount();
       this.render();
+      this.maybeAutoPlay();
     }
 
     reset() {
-      this.players = [
-        { id: 1, name: "Joueur 1", progress: makeEmptyProgress(), turns: 0 },
-        { id: 2, name: "Joueur 2", progress: makeEmptyProgress(), turns: 0 },
-      ];
+      this.players = this.options.players.map((player) => ({
+        ...player,
+        progress: makeEmptyProgress(),
+        turns: 0,
+      }));
+
       this.currentPlayerIndex = 0;
       this.columnOwners = {};
       this.tempProgress = {};
@@ -1071,11 +1081,91 @@
       this.phase = "idle";
       this.finished = false;
       this.result = null;
-      this.message = "Joueur 1 commence. Lancez les dés.";
+      this.message = `${this.currentPlayer.name} commence. Lancez les dés.`;
       this.messageTone = "";
       this.log = [];
     }
 
+    get currentPlayerIsAuto() {
+      return this.currentPlayer.type === "heuristic";
+    }
+
+    maybeAutoPlay() {
+      if (!this.currentPlayerIsAuto || this.finished) {
+        return;
+      }
+
+      window.setTimeout(() => this.playAutoStep(), 350);
+    }
+
+    playAutoStep() {
+      if (!this.currentPlayerIsAuto || this.finished) {
+        return;
+      }
+
+      if (this.phase === "idle" || this.phase === "decision") {
+        this.autoRollAndChoose();
+      }
+    }
+
+    autoRollAndChoose() {
+      const player = this.currentPlayer;
+      const heuristic = HEURISTICS[player.heuristicId];
+
+      this.bustedTempProgress = {};
+      this.bustedPlayerId = null;
+      this.currentRoll = randomRoll();
+      this.rollCountInTurn += 1;
+
+      const legalActions = legalActionsForRoll(
+        this.currentRoll,
+        player.progress,
+        this.tempProgress,
+        this.blockedColumns,
+      );
+
+      if (legalActions.length === 0) {
+        this.bustedTempProgress = cloneMap(this.tempProgress);
+        this.bustedPlayerId = player.id;
+        player.turns += 1;
+        this.totalTurns += 1;
+        this.tempProgress = {};
+        this.addLog(`${player.name}: bust`);
+        this.switchPlayer();
+        this.message = `${player.name} bust. ${this.currentPlayer.name} joue.`;
+        this.messageTone = "bad";
+        this.render();
+        this.maybeAutoPlay();
+        return;
+      }
+
+      const decision = heuristic.decide({
+        progress: player.progress,
+        tempProgress: this.tempProgress,
+        legalActions,
+        turnRollCount: this.rollCountInTurn,
+        rng: Math.random,
+      });
+
+      this.tempProgress = applyAction(
+        decision.action,
+        player.progress,
+        this.tempProgress,
+        this.blockedColumns,
+      );
+
+      this.addLog(`${player.name}: ${describeAction(decision.action)}`);
+
+      if (decision.stop) {
+        this.stopTurn();
+      } else {
+        this.message = `${player.name} joue ${describeAction(decision.action)} et continue.`;
+        this.messageTone = "good";
+        this.phase = "decision";
+        this.render();
+        this.maybeAutoPlay();
+      }
+    }
     get currentPlayer() {
       return this.players[this.currentPlayerIndex];
     }
@@ -1227,6 +1317,7 @@
       }
 
       this.render();
+      this.maybeAutoPlay();
     }
 
     selectDie(index) {
@@ -1344,6 +1435,7 @@
       this.message = `${player.name} bloque ses positions. ${this.currentPlayer.name} joue.`;
       this.messageTone = "good";
       this.render();
+      this.maybeAutoPlay();
     }
 
     renderSelectionMessage() {
@@ -1404,12 +1496,16 @@
         <span class="capture-line p2">Joueur 2: ${p2.length ? p2.join(", ") : "aucune"}</span>
       `;
     }
-
     render() {
       assertTempProgressInvariant(this.tempProgress);
+
       const displayTempProgress =
-        Object.keys(this.bustedTempProgress).length > 0 ? this.bustedTempProgress : this.tempProgress;
+        Object.keys(this.bustedTempProgress).length > 0
+          ? this.bustedTempProgress
+          : this.tempProgress;
+
       const displayPlayerId = this.bustedPlayerId || this.currentPlayer.id;
+
       renderBoardTwoPlayer(
         this.refs.board,
         this.players,
@@ -1417,6 +1513,7 @@
         displayTempProgress,
         this.columnOwners,
       );
+
       renderDice(
         this.refs.dice,
         this.currentRoll,
@@ -1427,20 +1524,27 @@
 
       const p1Captured = countCapturedByPlayer(this.columnOwners, 1);
       const p2Captured = countCapturedByPlayer(this.columnOwners, 2);
+
       this.refs.stats.activePlayer.textContent = this.currentPlayer.name;
       this.refs.stats.open.textContent =
         Object.keys(this.bustedTempProgress).length > 0
           ? `${formatClimbers(this.bustedTempProgress)} (bust)`
           : formatClimbers(this.tempProgress);
+
       this.refs.stats.claimed.textContent = `J1 ${p1Captured} - J2 ${p2Captured}`;
       this.refs.stats.rolls.textContent = String(this.rollCountInTurn);
-      this.refs.turnCard.textContent = this.finished ? "Partie terminée" : `Tour du ${this.currentPlayer.name}`;
+      this.refs.turnCard.textContent = this.finished
+        ? "Partie terminée"
+        : `Tour du ${this.currentPlayer.name}`;
 
-      this.refs.message.textContent = this.phase === "select" ? this.renderSelectionMessage() : this.message;
+      this.refs.message.textContent =
+        this.phase === "select" ? this.renderSelectionMessage() : this.message;
+
       this.refs.message.className = `message-box ${this.messageTone}`;
 
       const selectedAction = this.getSelectedAction();
       const selectedChoices = this.getSelectedActionChoices();
+
       const canValidate =
         this.phase === "select" &&
         selectedAction !== null &&
@@ -1451,11 +1555,23 @@
               selectedChoices[this.selectedChoiceIndex],
           ));
 
-      this.refs.rollButton.textContent = this.rollCountInTurn === 0 ? "Lancer" : "Continuer";
-      this.refs.rollButton.disabled = this.finished || this.phase === "select";
-      this.refs.validateButton.disabled = !canValidate;
+      const autoTurn = this.currentPlayerIsAuto;
+
+      this.refs.rollButton.textContent =
+        this.rollCountInTurn === 0 ? "Lancer" : "Continuer";
+
+      this.refs.rollButton.disabled =
+        autoTurn || this.finished || this.phase === "select";
+
+      this.refs.validateButton.disabled =
+        autoTurn || !canValidate;
+
       this.refs.stopButton.disabled =
-        this.finished || this.phase !== "decision" || Object.keys(this.tempProgress).length === 0;
+        autoTurn ||
+        this.finished ||
+        this.phase !== "decision" ||
+        Object.keys(this.tempProgress).length === 0;
+
       this.renderChoiceOptions();
       this.renderCaptures();
 
@@ -1471,7 +1587,7 @@
         ? this.log.map((line) => `<div class="log-line">${line}</div>`).join("")
         : '<div class="muted">La partie commence.</div>';
     }
-  }
+}
 
   function populateHeuristicSelect() {
     const select = document.querySelector("#heuristic-select");
@@ -1488,17 +1604,20 @@
 
   function startDuelGame() {
     const heuristicId = document.querySelector("#heuristic-select").value;
-    const seed = Math.floor(Math.random() * 2147483647);
-    const schedule = makeRollSchedule(seed);
-    const heuristicResult = simulateHeuristic(heuristicId, schedule);
     const root = document.querySelector("#duel-root");
 
-    state.duelGame = new GameController(root, {
-      mode: "duel",
-      schedule,
-      heuristicResult,
+    state.duelGame = new TwoPlayerController(root, {
+      players: [
+        { id: 1, name: "Joueur", type: "human" },
+        {
+          id: 2,
+          name: HEURISTICS[heuristicId].name,
+          type: "heuristic",
+          heuristicId,
+        },
+      ],
     });
-  }
+}
 
   function startTwoPlayerGame() {
     const root = document.querySelector("#two-player-root");
