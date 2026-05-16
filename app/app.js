@@ -499,6 +499,285 @@
     };
   }
 
+  function simulateHeuristicDuel(heuristicAId, heuristicBId, seed = Date.now()) {
+    const rng = mulberry32(seed);
+    const players = [
+      {
+        id: 1,
+        heuristicId: heuristicAId,
+        name: HEURISTICS[heuristicAId].name,
+        progress: makeEmptyProgress(),
+        turns: 0,
+      },
+      {
+        id: 2,
+        heuristicId: heuristicBId,
+        name: HEURISTICS[heuristicBId].name,
+        progress: makeEmptyProgress(),
+        turns: 0,
+      },
+    ];
+
+    let currentPlayerIndex = 0;
+    let columnOwners = {};
+    let totalTurns = 0;
+
+    while (
+      countCapturedByPlayer(columnOwners, 1) < 3 &&
+      countCapturedByPlayer(columnOwners, 2) < 3 &&
+      totalTurns < MAX_DUEL_TURNS
+    ) {
+      const player = players[currentPlayerIndex];
+      const heuristic = HEURISTICS[player.heuristicId];
+      let tempProgress = {};
+      let rollCountInTurn = 0;
+      let turnFinished = false;
+
+      while (!turnFinished && rollCountInTurn < MAX_ROLLS_PER_TURN) {
+        const roll = randomRoll(rng);
+        rollCountInTurn += 1;
+
+        const blockedColumns = capturedColumnsFromOwners(columnOwners);
+
+        const legalActions = legalActionsForRoll(
+          roll,
+          player.progress,
+          tempProgress,
+          blockedColumns,
+        );
+
+        if (legalActions.length === 0) {
+          player.turns += 1;
+          totalTurns += 1;
+          turnFinished = true;
+          break;
+        }
+
+        const decision = heuristic.decide({
+          progress: player.progress,
+          tempProgress,
+          legalActions,
+          turnRollCount: rollCountInTurn,
+          rng,
+        });
+
+        tempProgress = applyAction(
+          decision.action,
+          player.progress,
+          tempProgress,
+          blockedColumns,
+        );
+
+        if (decision.stop) {
+          player.progress = bankProgress(player.progress, tempProgress);
+
+          Object.keys(tempProgress).forEach((columnText) => {
+            const column = Number(columnText);
+            if (!columnOwners[column] && player.progress[column] >= NS[column]) {
+              columnOwners[column] = player.id;
+            }
+          });
+
+          player.turns += 1;
+          totalTurns += 1;
+          turnFinished = true;
+        }
+      }
+
+      if (!turnFinished) {
+        player.progress = bankProgress(player.progress, tempProgress);
+        player.turns += 1;
+        totalTurns += 1;
+      }
+
+      currentPlayerIndex = 1 - currentPlayerIndex;
+    }
+
+    const capturedA = countCapturedByPlayer(columnOwners, 1);
+    const capturedB = countCapturedByPlayer(columnOwners, 2);
+
+    let winner = "draw";
+    if (capturedA >= 3) winner = heuristicAId;
+    if (capturedB >= 3) winner = heuristicBId;
+
+    return {
+      heuristicAId,
+      heuristicBId,
+      heuristicAName: HEURISTICS[heuristicAId].name,
+      heuristicBName: HEURISTICS[heuristicBId].name,
+      winner,
+      totalTurns,
+      turnsA: players[0].turns,
+      turnsB: players[1].turns,
+      capturedA,
+      capturedB,
+      seed,
+    };
+  }
+
+  function benchmarkHeuristicDuels(nGames = 100) {
+    const heuristicIds = Object.keys(HEURISTICS);
+    const results = [];
+
+    heuristicIds.forEach((heuristicAId) => {
+      heuristicIds.forEach((heuristicBId) => {
+        if (heuristicAId === heuristicBId) {
+          return;
+        }
+
+        let winsA = 0;
+        let winsB = 0;
+        let draws = 0;
+        let totalTurns = 0;
+        let totalCapturedA = 0;
+        let totalCapturedB = 0;
+
+        for (let i = 0; i < nGames; i += 1) {
+          const result = simulateHeuristicDuel(
+            heuristicAId,
+            heuristicBId,
+            100000 * i + heuristicIds.indexOf(heuristicAId) * 100 + heuristicIds.indexOf(heuristicBId),
+          );
+
+          if (result.winner === heuristicAId) winsA += 1;
+          else if (result.winner === heuristicBId) winsB += 1;
+          else draws += 1;
+
+          totalTurns += result.totalTurns;
+          totalCapturedA += result.capturedA;
+          totalCapturedB += result.capturedB;
+        }
+
+        results.push({
+          matchup: `${HEURISTICS[heuristicAId].name} vs ${HEURISTICS[heuristicBId].name}`,
+          heuristicAId,
+          heuristicBId,
+          winsA,
+          winsB,
+          draws,
+          winRateA: winsA / nGames,
+          winRateB: winsB / nGames,
+          avgTurns: totalTurns / nGames,
+          avgCapturedA: totalCapturedA / nGames,
+          avgCapturedB: totalCapturedB / nGames,
+        });
+      });
+    });
+
+    console.table(results);
+    return results;
+  }
+
+  function benchmarkHeuristicDuelMatrixPretty(nGames = 10) {
+    const heuristicIds = ["rule28", "h1", "h2", "h3"];
+
+    const labels = Object.fromEntries(
+      heuristicIds.map((id) => [id, HEURISTICS[id].name])
+    );
+
+    const matrix = {};
+
+    heuristicIds.forEach((rowId) => {
+      matrix[rowId] = {};
+
+      heuristicIds.forEach((colId) => {
+        if (rowId === colId) {
+          matrix[rowId][colId] = "-";
+          return;
+        }
+
+        let rowWins = 0;
+
+        for (let i = 0; i < nGames; i += 1) {
+          const seed =
+            100000 * i +
+            heuristicIds.indexOf(rowId) * 100 +
+            heuristicIds.indexOf(colId);
+
+          const result = simulateHeuristicDuel(rowId, colId, seed);
+
+          if (result.winner === rowId) {
+            rowWins += 1;
+          }
+        }
+
+        matrix[rowId][colId] = rowWins;
+      });
+    });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 900px; margin: 24px auto;">
+        <h2 style="margin-bottom: 4px;">Matrice des duels d’heuristiques</h2>
+        <p style="margin-top: 0; color: #555;">
+          Chaque case indique le nombre de victoires de l’heuristique en ligne contre l’heuristique en colonne,
+          sur ${nGames} parties.
+        </p>
+
+        <table style="border-collapse: collapse; width: 100%; text-align: center; font-size: 14px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ccc; padding: 10px; background: #f3f3f3;">Heuristique</th>
+              ${heuristicIds
+                .map(
+                  (id) =>
+                    `<th style="border: 1px solid #ccc; padding: 10px; background: #f3f3f3;">${labels[id]}</th>`
+                )
+                .join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${heuristicIds
+              .map(
+                (rowId) => `
+                <tr>
+                  <th style="border: 1px solid #ccc; padding: 10px; background: #f8f8f8; text-align: left;">
+                    ${labels[rowId]}
+                  </th>
+                  ${heuristicIds
+                    .map((colId) => {
+                      const value = matrix[rowId][colId];
+                      const bg =
+                        value === "-"
+                          ? "#eeeeee"
+                          : value > nGames / 2
+                          ? "#d8f3dc"
+                          : value === nGames / 2
+                          ? "#fff3bf"
+                          : "#ffd6d6";
+
+                      return `
+                        <td style="border: 1px solid #ccc; padding: 10px; background: ${bg}; font-weight: 600;">
+                          ${value}
+                        </td>
+                      `;
+                    })
+                    .join("")}
+                </tr>
+              `
+              )
+              .join("")}
+          </tbody>
+        </table>
+
+        <p style="color: #666; font-size: 13px;">
+          Vert : majorité de victoires pour l’heuristique en ligne. Rouge : majorité de défaites.
+        </p>
+      </div>
+    `;
+
+    const win = window.open("", "_blank");
+
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      const container = document.querySelector("#auto-duel-root") || document.body;
+      container.innerHTML = html;
+    }
+
+    console.table(matrix);
+    return matrix;
+  }
   function actionFromSelectedDice(roll, selectedIndices) {
     const selectedSum = selectedIndices.reduce((sum, index) => sum + roll[index], 0);
     const remainingSum = roll.reduce((sum, value, index) => (selectedIndices.includes(index) ? sum : sum + value), 0);
@@ -1754,6 +2033,9 @@ class TwoPlayerController {
     document.querySelector("#heuristic-a-select").addEventListener("change", startAutoDuelGame);
     document.querySelector("#heuristic-b-select").addEventListener("change", startAutoDuelGame);
   }
+  globalThis.benchmarkHeuristicDuels = benchmarkHeuristicDuels;
+  globalThis.simulateHeuristicDuel = simulateHeuristicDuel;
+  globalThis.benchmarkHeuristicDuelMatrixPretty = benchmarkHeuristicDuelMatrixPretty;
 
   globalThis.CantStopRules = {
     NS,
